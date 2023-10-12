@@ -1,89 +1,94 @@
 const express = require('express');
+const mysql = require("mysql");
+const bodyParser = require('body-parser')
+
 const app = express();
-const mongoose = require('mongoose');
 
-mongoose.connect('mongodb://localhost:27017', {
-    dbName: 'changDB',
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    connectTimeoutMS: 30000,
-})
-.then(() => console.log("Connected to DB"))
-.catch((err) => console.log(err));
+app.use(bodyParser.json());
 
-const MenuSchema = new mongoose.Schema({
-    menuname: {
-        type: String,
-    },
-    price: {
-        type: Number,
-    },
-    weekly_sell: {
-        type: Number,
-    },
-    topmenu_sell_week: {
-        type: String,
-    },
-    optional: {
-        type: String,
-    }
-})
-
-const Menu = mongoose.model("menus", MenuSchema);
-
-Menu.createIndexes();
-
-app.use(express.json());
-
-app.get('/', (req, res) => {
-    res.send('app is running');
+// db config
+const db = mysql.createConnection({
+    host: "pchang-db.cjvysxsaotkk.us-east-1.rds.amazonaws.com",
+    port: "3306",
+    user: "admin",
+    password: "project2023",
+    database: "changdb",
 });
 
-// app.get("/menus", async (req, res) => {
-//     try {
-//         const menus = await Menu.find();
-//         res.send(menus);
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).send("Can't Find Item");
-//     }
-// })
-
-app.get("/menus", async (req, res) => {
-    try {
-        const menu = 
-            [
-                {
-                    "menuname": "fried rice",
-                    "price": 40
-                },
-                {
-                    "menuname": "steak",
-                    "price": 40
-                }
-            ]
-        res.send(menu);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send("Can't Find Item");
-    }
-})
-app.post("/addMenu", async (req, res) => {
-    try{
-        const menu = new Menu(req.body);
-        let result = await menu.save();
-        result = result.toObject();
-        if (result) {
-            res.send(result)
-        } else {
-            console.log("Can't add menu");
-        }
-    } catch (e) {
-        console.log(e);
-        res.send({status: "Something went wrong"});
-    }
+// connect to db
+db.connect((err) => {
+    if (err) throw err;
 })
 
-app.listen(3000, () => {
-    console.log('Application is running on port 3000');
+// add menu
+app.post('/addMenu', (req, res) => {
+    const {menu_name, menu_picture, price, weekly_sell, topmenu_sell_week} = req.body
+    const menu = [[menu_name, menu_picture, price, weekly_sell, topmenu_sell_week]]
+    db.query("INSERT INTO menus (menu_name, menu_picture, price, weekly_sell, topmenu_sell_week) VALUES ?", [menu], (err, result) => {
+        if (err) throw err;
+        console.log(result);
+        res.send('menu added')
+    })
+})
+
+// get all menu
+app.get('/getMenu', (req, res) => {
+    db.query("SELECT * FROM menus", (err, result) => {
+        if (err) throw err;
+        var data = JSON.parse(JSON.stringify(result));
+        res.send(data)
+    })
+    // res.send("ok")
+})
+
+// get optional by menu_id
+app.get('/getOptionalByMenuId', (req, res) => {
+    const menu_id = req.body.menu_id
+    db.query("SELECT * FROM menu_optionals WHERE menu_id = ?", menu_id, (err, result) => {
+        if (err) throw err;
+        var data = JSON.parse(JSON.stringify(result));
+        res.send(data)
+    })
+})
+
+// add queue
+app.post('/addQueue', (req, res) => {
+    const {order_id, queue_num, create_date, queue_status} = req.body
+    const queue = [[order_id, queue_num, create_date, queue_status]]
+    db.query("INSERT INTO queues (order_id, queue_num, create_date, queue_status) VALUES ?", [queue], (err, result) => {
+        if (err) throw err;
+        console.log(result)
+        res.send('queue added')
+    })
+})
+
+// get queue
+app.get('/getQueue', (req, res) => {
+    db.query("SELECT * FROM queues", (err, result) => {
+        if (err) throw err;
+        var data = JSON.parse(JSON.stringify(result));
+        res.send(data)
+    })
+})
+
+// add order
+app.post('/addOrder', (req, res) => {
+    var order_id;
+    db.query("INSERT INTO orders (order_status) VALUES ('pending')", (err, result) => {
+        if (err) throw err;
+        order_id = result.insertId;
+
+        const {menu_id, quantity, meat, spicy, extra, egg, container, optional_text} = req.body
+        const orderItem = [[order_id, menu_id, quantity, meat, spicy, extra, egg, container, optional_text]]
+        
+        db.query("INSERT INTO order_items (order_id, menu_id, quantity, meat, spicy, extra, egg, container, optional_text) VALUES ?", [orderItem], (err, result) => {
+            if (err) throw err;
+            console.log(result)
+            res.send('order added')
+        })
+    })
+})
+
+app.listen(3001, () => {
+    console.log('Application is running on port 3001');
 })
