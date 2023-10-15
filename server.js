@@ -1,10 +1,21 @@
 const express = require('express');
 const mysql = require("mysql");
 const bodyParser = require('body-parser')
+const WebSocket = require('ws');
 
 const app = express();
+const wss = new WebSocket.Server({ port: 3001 });
 
 app.use(bodyParser.json());
+wss.on('connection', (ws) => {
+    ws.on('message', (message) => {
+        wss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+                client.send(message);
+            }
+        })
+    })
+})
 
 // db config
 const db = mysql.createConnection({
