@@ -1,10 +1,12 @@
 const express = require('express');
+const http = require('http');
 const mysql = require("mysql");
 const bodyParser = require('body-parser')
 const WebSocket = require('ws');
 
 const app = express();
-const wss = new WebSocket.Server({ port: 3001 });
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 app.use(bodyParser.json());
 wss.on('connection', (ws) => {
@@ -136,6 +138,6 @@ app.get('/getOrderById', (req, res) => {
     })
 })
 
-app.listen(3001, () => {
+server.listen(3001, () => {
     console.log('Application is running on port 3001');
 })
