@@ -16,6 +16,7 @@ app.use((req, res, next) => {
     next();
   });
 wss.on('connection', (ws) => {
+    console.log("client connected")
     ws.on('message', (message) => {
         wss.clients.forEach((client) => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
@@ -77,7 +78,7 @@ app.get('/getOptionalByMenuId', (req, res) => {
 // get queue
 app.get('/getQueue', (req, res) => {
     db.query(
-        `SELECT queue_id, menu_name, quantity, queue_status FROM queues
+        `SELECT queue_id, menu_name, meat, spicy, extra, egg, optional_text, container, quantity, queue_status FROM queues
         INNER JOIN menus ON menus.menu_id = queues.menu_id`, (err, result) => {
         if (err) throw err;
         var data = JSON.parse(JSON.stringify(result));
@@ -90,7 +91,15 @@ app.post('/addOrder', (req, res) => {
     const {menu_id, meat, spicy, extra, egg, container, optional_text} = req.body
     var existing_queue;
     db.query(
-        `SELECT queue_id FROM queues WHERE menu_id = ? AND queue_status = 'wait-confirm'`, req.body.menu_id, (err, result) => {
+        `SELECT queue_id
+         FROM queues WHERE menu_id = ?
+         AND meat = ?
+         AND spicy <=> ?
+         AND extra = ?
+         AND egg <=> ?
+         AND optional_text <=> ?
+         AND container <=> ?
+         AND queue_status = 'wait-confirm'`, [menu_id, meat, spicy, extra, egg, optional_text, container], (err, result) => {
         if (err) {
             res.status(500).send("Error find queue");
         } else {
@@ -108,8 +117,8 @@ app.post('/addOrder', (req, res) => {
                 })
             } else {
                 db.query(
-                    `INSERT INTO queues (menu_id, quantity, create_date, queue_status)
-                    VALUES (?, 1, NOW(), 'wait-confirm');`, [menu_id], (err, result) => {
+                    `INSERT INTO queues (menu_id, meat, spicy, extra, egg, optional_text, container, quantity, create_date, queue_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), 'wait-confirm');`, [menu_id, meat, spicy, extra, egg, optional_text, container], (err, result) => {
                 if (err) {
                     res.status(500).send("Error creating queue");
                 } else {
@@ -146,6 +155,22 @@ app.get('/getOrderById', (req, res) => {
             res.send(data)
         }
     })
+})
+
+// change status in orders and queues to approve and cooking respectively
+app.post('/changeStatus', (req, res) => {
+    const {queue_id, queue_status, order_status} = req.body
+    try {
+        db.query(
+            `UPDATE queues SET queue_status = ? WHERE queue_id = ?`, [queue_status, queue_id])
+        db.query(
+            `UPDATE orders SET order_status = ? WHERE queue_id = ?`, [order_status, queue_id])
+    } catch (error) {
+        console.log(error)
+        res.status(500).send("Error changing status")
+    } finally {
+        res.status(200).send("Status changed")
+    }
 })
 
 server.listen(3001, () => {
