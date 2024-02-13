@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const mysql = require("mysql");
@@ -28,11 +30,11 @@ wss.on('connection', (ws) => {
 
 // db config
 const db = mysql.createConnection({
-    host: "pchang-db.cjvysxsaotkk.us-east-1.rds.amazonaws.com",
-    port: "3306",
-    user: "admin",
-    password: "project2023",
-    database: "changdb",
+    host: process.env.MYSQL_HOST,
+    port: process.env.MYSQL_PORT,
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
 });
 
 // connect to db
@@ -86,56 +88,45 @@ app.get('/getQueue', (req, res) => {
     })
 })
 
-// add order and update queue
-app.post('/addOrder', (req, res) => {
-    const {menu_id, meat, spicy, extra, egg, container, optional_text} = req.body
-    var existing_queue;
+// // add queue
+// app.post('/addQueue', (req, res) => {
+    
+// })
+
+// get order
+app.get('/getOrder', (req, res) => {
     db.query(
-        `SELECT queue_id
-         FROM queues WHERE menu_id = ?
-         AND meat = ?
-         AND spicy <=> ?
-         AND extra = ?
-         AND egg <=> ?
-         AND optional_text <=> ?
-         AND container <=> ?
-         AND queue_status = 'wait-confirm'`, [menu_id, meat, spicy, extra, egg, optional_text, container], (err, result) => {
-        if (err) {
-            res.status(500).send("Error find queue");
-        } else {
-            existing_queue = result[0] && result[0].queue_id;
-            if (existing_queue) {
-                db.query(`UPDATE queues SET quantity = quantity + 1 WHERE queue_id = ?`, existing_queue)
+        `SELECT orders.order_id, order_menu_id, order_status, order_menu_status, total_menu, order_menu_id, CONCAT(menu_name, " ", meat) AS menu, spicy ,extra, egg, optional_text, container, queue_id
+        FROM orders
+        INNER JOIN order_menus
+        ON orders.order_id = order_menus.order_id
+        INNER JOIN menus
+        ON order_menus.menu_id = menus.menu_id`, (err, result) => {
+            if (err) throw err;
+            var data = JSON.parse(JSON.stringify(result));
+            res.send(data)
+         }
+    )
+})
+
+// add order
+app.post('/addOrder', (req, res) => {
+    const {menu} = req.body
+    db.query(
+        `INSERT INTO orders (order_status, total_menu)
+         VALUES ('pending', ?)`, menu.length, (err, result) => {
+            if (err) throw err
+            const order_id = result.insertId
+            for (let i = 0; i < menu.length; i++) {
                 db.query(
-                    `INSERT INTO orders (menu_id, meat, spicy, extra, egg, optional_text, container, order_status, queue_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [menu_id, meat, spicy, extra, egg, optional_text, container, 'pending', existing_queue], (err, result) => {
-                    if (err) {
-                        res.status(500).send("Error creating order");
-                    } else {
-                        res.status(200).send("Order created");
-                    }
-                })
-            } else {
-                db.query(
-                    `INSERT INTO queues (menu_id, meat, spicy, extra, egg, optional_text, container, quantity, create_date, queue_status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), 'wait-confirm');`, [menu_id, meat, spicy, extra, egg, optional_text, container], (err, result) => {
-                if (err) {
-                    res.status(500).send("Error creating queue");
-                } else {
-                    const queue_id = result.insertId
-                    db.query(
-                        `INSERT INTO orders (menu_id, meat, spicy, extra, egg, optional_text, container, order_status, queue_id)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [menu_id, meat, spicy, extra, egg, optional_text, container, 'pending', queue_id], (err, result) => {
-                        if (err) {
-                            res.status(500).send("Error creating order");
-                        } else {
-                            res.status(200).send("Order created");
-                        }})
-                    }
+                    `INSERT INTO order_menus (order_id, menu_id, meat, spicy, extra, egg, optional_text, container, queue_id, order_menu_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`, [order_id, menu[i].menu_id, menu[i].meat, menu[i].spicy, menu[i].extra, menu[i].egg, menu[i].optional_text, menu[i].container, null], (err, result) => {
+                    if (err) throw err
                 })
             }
+            res.send("order created")
         }
-    })
+    )
 })
 
 // get order by id
