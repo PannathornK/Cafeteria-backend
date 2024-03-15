@@ -42,6 +42,10 @@ db.connect((err) => {
     if (err) throw err;
 })
 
+app.get('/', (req, res) => {
+    res.send("ok")
+})
+
 // add menu
 app.post('/addMenu', (req, res) => {
     const {menu_name, menu_picture, price, weekly_sell, topmenu_sell_week} = req.body
@@ -68,19 +72,101 @@ app.get('/getMenu', (req, res) => {
 })
 
 // get optional by menu_id
-app.get('/getOptionalByMenuId', (req, res) => {
-    const menu_id = req.body.menu_id
-    db.query("SELECT * FROM menu_optionals WHERE menu_id = ?", menu_id, (err, result) => {
-        if (err) throw err;
-        var data = JSON.parse(JSON.stringify(result));
-        res.send(data)
+app.get('/getOptionals', (req, res) => {
+    const data = {
+        menus: []
+    };
+
+    const queryDatabase = (sql, params) => {
+        return new Promise((resolve, reject) => {
+            db.query(sql, params, (err, result) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(result);
+                }
+            });
+        });
+    };
+
+    queryDatabase('SELECT menu_id, menu_name, menu_picture, price FROM menus')
+    .then(menuResults => {
+        data.menus = menuResults.map(menu => ({
+            id: menu.menu_id,
+            title: menu.menu_name,
+            image: menu.menu_picture,
+            price: Number(menu.price),
+            options: []
+        }));
+
+        // Fetch options for each menu based on optional_type
+        const optionsPromises = data.menus.map(menu => {
+            return Promise.all([
+                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'meat'`, menu.id),
+                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'spicy'`, menu.id),
+                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'egg'`, menu.id),
+                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'container'`, menu.id)
+            ]);
+        });
+
+        return Promise.all(optionsPromises);
     })
-})
+    .then(optionsResults => {
+        optionsResults.forEach((options, index) => {
+            const [meatOptions, spicyOptions, eggOptions, containerOptions] = options;
+            
+            data.menus[index].options.push({
+                title: 'ประเภทเนื้อสัตว์',
+                required: 1,
+                options: meatOptions.map(option => ({
+                    name: option.optional_value,
+                    price: Number(option.additional_price)
+                }))
+            });
+
+            data.menus[index].options.push({
+                title: 'ระดับความเผ็ด',
+                required: 1,
+                options: spicyOptions.map(option => ({
+                    name: option.optional_value,
+                    price: Number(option.additional_price)
+                }))
+            });
+
+            data.menus[index].options.push({
+                title: 'เพิ่มไข่',
+                required: 0,
+                options: eggOptions.map(option => ({
+                    name: option.optional_value,
+                    price: Number(option.additional_price)
+                }))
+            });
+
+            data.menus[index].options.push({
+                title: 'ภาชนะ',
+                required: 1,
+                options: containerOptions.map(option => ({
+                    name: option.optional_value,
+                    price: Number(option.additional_price)
+                }))
+            });
+        });
+
+        res.send(data);
+    })
+    .catch(err => {
+        // Handle errors here
+        console.error(err);
+        res.status(500).send('Internal Server Error');
+    });
+});
+
+
 
 // get queue
 app.get('/getQueue', (req, res) => {
     db.query(
-        `SELECT queue_id, menu_name, meat, spicy, extra, egg, optional_text, container, quantity, queue_status FROM queues
+        `SELECT queue_id, CONCAT(menu_name, " ", meat) AS menu, spicy, extra, egg, optional_text, container, quantity, queue_status FROM queues
         INNER JOIN menus ON menus.menu_id = queues.menu_id`, (err, result) => {
         if (err) throw err;
         var data = JSON.parse(JSON.stringify(result));
@@ -89,9 +175,80 @@ app.get('/getQueue', (req, res) => {
 })
 
 // // add queue
-// app.post('/addQueue', (req, res) => {
-    
-// })
+app.post('/addQueue', (req, res) => {
+    const approvedOrdersId = req.body.approvedOrders;
+    const approvedOrders = [];
+    db.query(
+        `SELECT menu_id, meat, spicy, extra, egg, optional_text, container
+         FROM order_menus
+         WHERE order_menu_id IN (${approvedOrdersId.map(() => '?').join(',')})
+        `, approvedOrdersId, (err, result) => {
+            if (err) {
+                res.status(500).send("Error retrieving queue");
+            } else {
+                const data = JSON.parse(JSON.stringify(result));
+                approvedOrders.push(...data);
+
+                const processOrder = (index) => {
+                    if (index < approvedOrders.length){
+                        const approvedOrder = approvedOrders[index];
+                        db.query(
+                            `SELECT queue_id
+                             FROM queues WHERE menu_id = ?
+                             AND meat = ?
+                             AND spicy <=> ?
+                             AND extra = ?
+                             AND egg <=> ?
+                             AND optional_text <=> ?
+                             AND container <=> ?
+                             AND queue_status = 'approved'`,
+                             Object.values(approvedOrder),
+                             (err, result) => {
+                                if (err) {
+                                    res.status(500).send("Error checking existing queue")
+                                } else {
+                                    const existingQueue = result[0] && result[0].queue_id;
+
+                                    const insertOrUpdateQueue = () => {
+                                        const query = existingQueue
+                                            ? `UPDATE queues SET quantity = quantity + 1 WHERE queue_id = ?`
+                                            : `INSERT INTO queues (menu_id, meat, spicy, extra, egg, optional_text, container, quantity, create_date, queue_status)
+                                               VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), 'approved')`;
+
+                                        db.query(
+                                            query, existingQueue ? [existingQueue] : Object.values(approvedOrder),
+                                            (err, result) => {
+                                                if (err) {
+                                                    res.status(500).send("Error adding/updating queue");
+                                                } else {
+                                                    const updatedQueueId = existingQueue || result.insertId;
+                                                    db.query(`UPDATE order_menus SET queue_id = ? WHERE order_menu_id = ?`,
+                                                        [updatedQueueId, approvedOrdersId[index]],
+                                                        (err, result) => {
+                                                            if (err) {
+                                                                res.status(500).send("Error updating queue_id in order_menus");
+                                                            } else {
+                                                                processOrder(index + 1);
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    }
+                                    insertOrUpdateQueue();
+                                }
+                             }
+                        )
+                    } else {
+                        res.send('All queues processed');
+                    }
+                }
+                processOrder(0);
+            }
+        }
+    )
+})
 
 // get order
 app.get('/getOrder', (req, res) => {
@@ -148,19 +305,45 @@ app.get('/getOrderById', (req, res) => {
     })
 })
 
-// change status in orders and queues to approve and cooking respectively
-app.post('/changeStatus', (req, res) => {
-    const {queue_id, queue_status, order_status} = req.body
+// change status in orders
+app.post('/changeStatus', async (req, res) => {
+    const approvedOrders = req.body.approvedOrders || [];
+    const rejectedOrders = req.body.rejectedOrders || [];
+
+    const updateApprovedQuery = `
+        UPDATE order_menus
+        SET order_menu_status = 'approved'
+        WHERE order_menu_id IN (${approvedOrders.map(() => '?').join(',')})
+    `;
+    const updateRejectedQuery = `
+        UPDATE order_menus
+        SET order_menu_status = 'rejected' 
+        WHERE order_menu_id IN (${rejectedOrders.map(() => '?').join(',')})
+    `;
+
+    const updateOrders = async(query, items) => {
+        return new Promise((resolve, reject) => {
+            if (items.length > 0) {
+                db.query(query, [...items], (error) => {
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                })
+            } else {
+                resolve();
+            }
+        });
+    };
     try {
-        db.query(
-            `UPDATE queues SET queue_status = ? WHERE queue_id = ?`, [queue_status, queue_id])
-        db.query(
-            `UPDATE orders SET order_status = ? WHERE queue_id = ?`, [order_status, queue_id])
+        await Promise.all([
+            updateOrders(updateApprovedQuery, approvedOrders),
+            updateOrders(updateRejectedQuery, rejectedOrders),
+        ]);
+        res.status(200).send({message: 'Status updated'});
     } catch (error) {
-        console.log(error)
-        res.status(500).send("Error changing status")
-    } finally {
-        res.status(200).send("Status changed")
+        res.status(500).json({ error: 'Failed to update status' });
     }
 })
 
