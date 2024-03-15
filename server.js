@@ -62,17 +62,17 @@ app.post('/addMenu', (req, res) => {
 })
 
 // get all menu
-app.get('/getMenu', (req, res) => {
-    db.query("SELECT * FROM menus", (err, result) => {
-        if (err) throw err;
-        var data = JSON.parse(JSON.stringify(result));
-        res.send(data)
-    })
-    // res.send("ok")
-})
+// app.get('/getMenu', (req, res) => {
+//     db.query("SELECT * FROM menus", (err, result) => {
+//         if (err) throw err;
+//         var data = JSON.parse(JSON.stringify(result));
+//         res.send(data)
+//     })
+//     // res.send("ok")
+// })
 
-// get optional by menu_id
-app.get('/getOptionals', (req, res) => {
+// get all menu with optionals
+app.get('/getMenuWithOptionals', (req, res) => {
     const data = {
         menus: []
     };
