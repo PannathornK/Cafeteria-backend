@@ -262,7 +262,7 @@ app.get('/getOrder', (req, res) => {
             if (err) throw err;
             var data = JSON.parse(JSON.stringify(result));
             res.send(data)
-         }
+        }
     )
 })
 
@@ -289,21 +289,78 @@ app.post('/addOrder', (req, res) => {
 // get order by id
 app.get('/getOrderById', (req, res) => {
     const order_id = req.body.order_id
-    db.query(
-        `SELECT orders.order_id, order_status , menu_name, meat, spicy, extra, egg, container FROM orders
-         INNER JOIN order_items
-         ON orders.order_id = order_items.order_id
-         INNER JOIN menus
-         ON order_items.menu_id = menus.menu_id
-         WHERE orders.order_id = ?`, order_id, (err, result) => {
-        if (err) {
-            console.error(err);
-            res.status(500).send("Error finding in order")
-        } else {
-            var data = JSON.parse(JSON.stringify(result));
-            res.send(data)
+    const data = {
+        orderId: order_id,
+        orderStatus: '',
+        orderMenu: [
+            {
+                menu_name: '',
+                meat: '',
+                spicy: '',
+                extra: '',
+                egg: '',
+                orderMenuStatus: '',
+            }
+        ]
+    }
+    const queryDatabase = (sql, params) => {
+        return new Promise((resolve, reject) => {
+            db.query(sql, params, (err, result) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(result);
+                }
+            })
+        })
+    }
+
+    Promise.all([
+        queryDatabase(`SELECT order_status FROM orders WHERE order_id = ?`, [order_id]),
+        queryDatabase(`
+            SELECT menu_name, meat, spicy, extra, egg, order_menu_status
+            FROM order_menus
+            INNER JOIN menus
+            ON order_menus.menu_id = menus.menu_id
+            WHERE order_menus.order_id = ?`, [order_id])
+    ])
+    .then(([orderResult, menuResult]) => {
+        if (orderResult.length > 0) {
+            data.orderStatus = orderResult[0].order_status;
         }
+
+        data.orderMenu = menuResult.map(item => ({
+            menu_name: item.menu_name,
+            meat: item.meat,
+            spicy: item.spicy,
+            extra: item.extra,
+            egg: item.egg,
+            orderMenuStatus: item.order_menu_status
+        }))
+
+        res.status(200).json(data);
     })
+    .catch(err => {
+        console.error(err);
+        res.status(500).send('Internal Server Error');
+    })
+
+    
+    // db.query(
+    //     `SELECT orders.order_id, order_status , menu_name, meat, spicy, extra, egg, container FROM orders
+    //      INNER JOIN order_items
+    //      ON orders.order_id = order_items.order_id
+    //      INNER JOIN menus
+    //      ON order_items.menu_id = menus.menu_id
+    //      WHERE orders.order_id = ?`, order_id, (err, result) => {
+    //     if (err) {
+    //         console.error(err);
+    //         res.status(500).send("Error finding in order")
+    //     } else {
+    //         var data = JSON.parse(JSON.stringify(result));
+    //         res.send(data)
+    //     }
+    // })
 })
 
 // change status in orders
