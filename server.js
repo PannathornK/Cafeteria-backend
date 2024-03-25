@@ -297,6 +297,7 @@ app.get('/getOrderById', (req, res) => {
          ON order_items.menu_id = menus.menu_id
          WHERE orders.order_id = ?`, order_id, (err, result) => {
         if (err) {
+            console.error(err);
             res.status(500).send("Error finding in order")
         } else {
             var data = JSON.parse(JSON.stringify(result));
@@ -345,6 +346,147 @@ app.post('/changeStatus', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Failed to update status' });
     }
+})
+
+// change status in queues and order_menus
+app.post('/changeQueueStatus', async (req, res) => {
+    const { queue_id, status } = req.body;
+
+    const updateQueueQuery = `
+        UPDATE queues
+        SET queue_status = ?
+        WHERE queue_id = ?
+    `;
+    const updateOrderQuery = `
+        UPDATE order_menus
+        SET order_menu_status = ?
+        WHERE queue_id = ?
+    `;
+
+    const updateOrders = async (query, params) => {
+        return new Promise((resolve, reject) => {
+            db.query(query, params, (error) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    };
+
+    try {
+        await updateOrders(updateQueueQuery, [status, queue_id]);
+        await updateOrders(updateOrderQuery, [status, queue_id]);
+
+        if (status === 'finished') {
+            await updateOrders(
+                `UPDATE order_menus
+                 SET queue_id = null
+                 WHERE queue_id = ?`, [queue_id]
+            );
+        }
+
+        res.status(200).send({ message: 'Status changed' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to change queue status' });
+    }
+});
+
+// update today sales by incoming sale value
+app.post('/updateTodaySales', (req, res) => {
+    const { sales } = req.body;
+
+    const query = `
+        UPDATE today_sales_data
+        SET today_sales = today_sales + ?
+        WHERE date = CURRENT_DATE();
+    `
+
+    db.query(query, [sales], (err, result) => {
+        if (err) {
+            console.error('Error updating today sales:', err);
+            res.status(500).json({ success: false, message: 'Failed to update today sales' });
+        } else {
+            res.status(200).json({ success: true, message: 'Today sales updated successfully' });
+        }
+    })
+})
+
+// update monthly sales by incoming sale value
+app.post('/updateMonthlySales', (req, res) => {
+    const { sales } = req.body;
+
+    const query = `
+        UPDATE monthly_sales_data
+        SET sales = sales + ?
+        WHERE monthly_sale_id IN (
+            SELECT monthly_sale_id
+            FROM (
+                SELECT monthly_sale_id
+                FROM monthly_sales_data
+                WHERE month = MONTH(CURRENT_DATE()) AND year = YEAR(CURRENT_DATE())
+            ) AS subquery
+        );
+    `;
+
+    db.query(query, [sales], (err, result) => {
+        if (err) {
+            console.error('Error updating monthly sales:', err);
+            res.status(500).json({ success: false, message: 'Failed to update monthly sales' });
+        } else {
+            res.status(200).json({ success: true, message: 'Monthly sales updated successfully' });
+        }
+    })
+});
+
+// get today sales value
+app.get('/getTodaySales', (req, res) => {
+    const query = `
+        SELECT today_sales
+        FROM today_sales_data
+        WHERE date = CURRENT_DATE()
+        LIMIT 1;
+    `;
+
+    db.query(query, (err, result) => {
+        if (err) {
+            console.error('Error fetching today sales:', err);
+            res.status(500).send("Error fetching today sales");
+        } else {
+            if (result.length > 0) {
+                const todaySales = result[0].today_sales;
+                res.status(200).send(todaySales.toString());
+            } else {
+                res.status(200).send('0');
+            }
+        }
+    })
+})
+
+// get monthly sales value
+app.get('/getMonthlySales', (req, res) => {
+    const query = `
+        SELECT month, sales
+        FROM (
+            SELECT month, year, sales
+            FROM monthly_sales_data
+            WHERE (year * 12 + month) <= (YEAR(CURRENT_DATE()) * 12 + MONTH(CURRENT_DATE()))
+            ORDER BY year DESC, month DESC
+            LIMIT 7
+        ) AS sub
+        ORDER BY year ASC, month ASC;    
+    `;
+
+    db.query(query, (err, result) => {
+        if (err) {
+            console.error('Error fetching monthly sales:', err);
+            res.status(500).send("Error fetching monthly sales");
+        } else {
+            var data = JSON.parse(JSON.stringify(result));
+            res.status(200).send(data)
+        }
+    })
 })
 
 server.listen(3001, () => {
