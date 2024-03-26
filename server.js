@@ -89,14 +89,15 @@ app.get('/getMenuWithOptionals', (req, res) => {
         });
     };
 
-    queryDatabase('SELECT menu_id, menu_name, menu_picture, price FROM menus')
+    queryDatabase('SELECT menu_id, menu_name, menu_picture, price, availability FROM menus')
     .then(menuResults => {
         data.menus = menuResults.map(menu => ({
             id: menu.menu_id,
             title: menu.menu_name,
             image: menu.menu_picture,
             price: Number(menu.price),
-            options: []
+            options: [],
+            availability: menu.availability
         }));
 
         // Fetch options for each menu based on optional_type
@@ -155,13 +156,36 @@ app.get('/getMenuWithOptionals', (req, res) => {
         res.send(data);
     })
     .catch(err => {
-        // Handle errors here
         console.error(err);
         res.status(500).send('Internal Server Error');
     });
 });
 
+app.get('/getMenuAvailability', (req, res) => {
+    db.query(`
+        SELECT menu_id, menu_name, availability
+        FROM menus
+    `, (err, result) => {
+        if (err) throw err;
+        var data = JSON.parse(JSON.stringify(result));
+        res.send(data)
+    })
+})
 
+app.put('/updateMenuAvailability', (req, res) => {
+    const { menu_id, availability } = req.body;
+    db.query(`
+        UPDATE menus
+        SET availability = ?
+        WHERE menu_id = ?
+    `, [availability, menu_id], (err, result) => {
+        if (err) {
+            res.status(500).send("Error updating menu availability");
+        } else {
+            res.send('menu availability updated')
+        }
+    })
+})
 
 // get queue
 app.get('/getQueue', (req, res) => {
@@ -174,7 +198,7 @@ app.get('/getQueue', (req, res) => {
     })
 })
 
-// // add queue
+// add queue
 app.post('/addQueue', (req, res) => {
     const approvedOrdersId = req.body.approvedOrders;
     const approvedOrders = [];
@@ -281,7 +305,7 @@ app.post('/addOrder', (req, res) => {
                     if (err) throw err
                 })
             }
-            res.send("order created")
+            res.send({ order_id: order_id })
         }
     )
 })
@@ -344,23 +368,6 @@ app.get('/getOrderById', (req, res) => {
         console.error(err);
         res.status(500).send('Internal Server Error');
     })
-
-    
-    // db.query(
-    //     `SELECT orders.order_id, order_status , menu_name, meat, spicy, extra, egg, container FROM orders
-    //      INNER JOIN order_items
-    //      ON orders.order_id = order_items.order_id
-    //      INNER JOIN menus
-    //      ON order_items.menu_id = menus.menu_id
-    //      WHERE orders.order_id = ?`, order_id, (err, result) => {
-    //     if (err) {
-    //         console.error(err);
-    //         res.status(500).send("Error finding in order")
-    //     } else {
-    //         var data = JSON.parse(JSON.stringify(result));
-    //         res.send(data)
-    //     }
-    // })
 })
 
 // change status in orders
@@ -451,7 +458,7 @@ app.post('/changeQueueStatus', async (req, res) => {
 });
 
 // update today sales by incoming sale value
-app.post('/updateTodaySales', (req, res) => {
+app.put('/updateTodaySales', (req, res) => {
     const { sales } = req.body;
 
     const query = `
@@ -471,7 +478,7 @@ app.post('/updateTodaySales', (req, res) => {
 })
 
 // update monthly sales by incoming sale value
-app.post('/updateMonthlySales', (req, res) => {
+app.put('/updateMonthlySales', (req, res) => {
     const { sales } = req.body;
 
     const query = `
@@ -496,6 +503,85 @@ app.post('/updateMonthlySales', (req, res) => {
         }
     })
 });
+
+// update best selling menu
+app.put('/updateBestSellingMenu', (req, res) => {
+    const { menu_id } = req.body
+    const sale_date = new Date().toISOString().slice(0, 10);
+
+    db.query(`
+        SELECT * FROM best_selling_menu_daily
+        WHERE menu_id = ? AND sale_date = ?;`, [menu_id, sale_date], (err, result) => {
+        if (err) {
+            console.error('Error checking best selling menu:', err);
+            return res.status(500).json({ success: false, message: 'Internal Server Error'});
+        }
+
+        if (result.length > 0) {
+            db.query(`
+                UPDATE best_selling_menu_daily
+                SET daily_amount = daily_amount + 1
+                WHERE menu_id = ? AND sale_date = ?;`, [menu_id, sale_date], (err, result) => {
+                if (err) {
+                    console.error('Error updating best selling menu:', err);
+                    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+                }
+                res.status(200).json({ success: true, message: 'Best selling menu updated successfully' });
+            })
+        } else {
+            db.query(`
+                INSERT INTO best_selling_menu_daily (menu_id, daily_amount, sale_date)
+                VALUES (?, 1, ?);`, [menu_id, sale_date], (err, result) => {
+                if (err) {
+                    console.error('Error updating best selling menu:', err);
+                    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+                }
+                res.status(200).json({ success: true, message: 'Best selling menu updated successfully' });
+            })
+        }
+    })
+})
+
+// update ingredients used
+app.put('/updateIngredientsUsed', (req, res) => {
+    const { optional_value } = req.body
+    const date_used = new Date().toISOString().slice(0, 10);
+
+    db.query(`
+        SELECT * FROM ingredients_used_daily
+        WHERE ingredient_name = ? AND date_used = ?;
+    `, [optional_value, date_used], (err, result) => {
+        if (err) {
+            console.error('Error checking ingredients used:', err);
+            return res.status(500).json({ success: false, message: 'Internal Server Error' });
+        }
+
+        if (result.length > 0) {
+            db.query(`
+                UPDATE ingredients_used_daily
+                SET daily_used = daily_used + 1
+                WHERE ingredient_name = ? AND date_used = ?;
+            `, [optional_value, date_used], (err, result) => {
+                if (err) {
+                    console.error('Error updating ingredients used:', err);
+                    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+                }
+                res.status(200).json({ success: true, message: 'Ingredients used updated successfully' });
+            })
+        } else {
+            db.query(`
+                INSERT INTO ingredients_used_daily (ingredient_name, daily_used, date_used)
+                VALUES (?, 1, ?);
+            `, [optional_value, date_used], (err, result) => {
+                if (err) {
+                    console.error('Error updating ingredients used:', err);
+                    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+                }
+                res.status(200).json({ success: true, message: 'Ingredients used updated successfully' });
+            })
+        }
+    })
+})
 
 // get today sales value
 app.get('/getTodaySales', (req, res) => {
@@ -539,6 +625,47 @@ app.get('/getMonthlySales', (req, res) => {
         if (err) {
             console.error('Error fetching monthly sales:', err);
             res.status(500).send("Error fetching monthly sales");
+        } else {
+            var data = JSON.parse(JSON.stringify(result));
+            res.status(200).send(data)
+        }
+    })
+})
+
+// get best selling menu
+app.get('/getBestSellingMenu', (req, res) => {
+    const sale_date = new Date().toISOString().slice(0, 10);
+    db.query(`
+        SELECT b.menu_id, m.menu_name, b.daily_amount
+        FROM best_selling_menu_daily b
+        INNER JOIN menus m
+        ON b.menu_id = m.menu_id
+        WHERE b.sale_date = ?
+        ORDER BY b.daily_amount DESC
+        LIMIT 6;
+    `, [sale_date], (err, result) => {
+        if(err) {
+            console.error('Error fetching best selling menu:', err);
+            res.status(500).send("Error fetching best selling menu");
+        } else {
+            var data = JSON.parse(JSON.stringify(result));
+            res.status(200).send(data)
+        }
+    })
+})
+
+app.get('/getIngredientsUsed', (req, res) => {
+    const date_used = new Date().toISOString().slice(0, 10);
+    db.query(`
+        SELECT ingredient_daily_id, ingredient_name, daily_used
+        FROM ingredients_used_daily
+        WHERE date_used = ?
+        ORDER BY daily_used DESC
+        LIMIT 6;
+    `, [date_used], (err, result) => {
+        if(err) {
+            console.error('Error fetching ingredients used:', err);
+            res.status(500).send("Error fetching ingredients used");
         } else {
             var data = JSON.parse(JSON.stringify(result));
             res.status(200).send(data)
