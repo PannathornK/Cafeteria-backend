@@ -190,7 +190,7 @@ app.put('/updateMenuAvailability', (req, res) => {
 // get queue
 app.get('/getQueue', (req, res) => {
     db.query(
-        `SELECT queue_id, CONCAT(menu_name, " ", meat) AS menu, spicy, extra, egg, optional_text, container, quantity, queue_status FROM queues
+        `SELECT queue_id, queues.menu_id, CONCAT(menu_name, " ", meat) AS menu, spicy, extra, egg, optional_text, container, quantity, queue_status FROM queues
         INNER JOIN menus ON menus.menu_id = queues.menu_id`, (err, result) => {
         if (err) throw err;
         var data = JSON.parse(JSON.stringify(result));
@@ -294,8 +294,8 @@ app.get('/getOrder', (req, res) => {
 app.post('/addOrder', (req, res) => {
     const {menu} = req.body
     db.query(
-        `INSERT INTO orders (order_status, total_menu)
-         VALUES ('pending', ?)`, menu.length, (err, result) => {
+        `INSERT INTO orders (order_status, total_menu, approved_menu, rejected_menu, cooking_menu, finished_menu, paid)
+         VALUES ('pending', ?, 0, 0, 0, 0, false)`, menu.length, (err, result) => {
             if (err) throw err
             const order_id = result.insertId
             for (let i = 0; i < menu.length; i++) {
@@ -311,8 +311,8 @@ app.post('/addOrder', (req, res) => {
 })
 
 // get order by id
-app.get('/getOrderById', (req, res) => {
-    const order_id = req.body.order_id
+app.get('/getOrderById/:order_id', (req, res) => {
+    const order_id = req.params.order_id
     const data = {
         orderId: order_id,
         orderStatus: '',
@@ -372,6 +372,7 @@ app.get('/getOrderById', (req, res) => {
 
 // change status in orders
 app.post('/changeStatus', async (req, res) => {
+    const orderId = req.body.orderId;
     const approvedOrders = req.body.approvedOrders || [];
     const rejectedOrders = req.body.rejectedOrders || [];
 
@@ -384,6 +385,11 @@ app.post('/changeStatus', async (req, res) => {
         UPDATE order_menus
         SET order_menu_status = 'rejected' 
         WHERE order_menu_id IN (${rejectedOrders.map(() => '?').join(',')})
+    `;
+    const updateOrderCount = `
+        UPDATE orders
+        SET approved_menu = ?, rejected_menu = ?
+        WHERE order_id = ?
     `;
 
     const updateOrders = async(query, items) => {
@@ -403,6 +409,7 @@ app.post('/changeStatus', async (req, res) => {
     };
     try {
         await Promise.all([
+            updateOrders(updateOrderCount, [approvedOrders.length, rejectedOrders.length, orderId]),
             updateOrders(updateApprovedQuery, approvedOrders),
             updateOrders(updateRejectedQuery, rejectedOrders),
         ]);
