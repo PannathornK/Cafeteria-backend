@@ -320,6 +320,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
         orderStatus: '',
         orderMenu: [
             {
+                menu_id: '',
                 menu_name: '',
                 meat: '',
                 spicy: '',
@@ -344,7 +345,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
     Promise.all([
         queryDatabase(`SELECT order_status FROM orders WHERE order_id = ?`, [order_id]),
         queryDatabase(`
-            SELECT menu_name, meat, spicy, extra, egg, order_menu_status
+            SELECT menu_id, menu_name, meat, spicy, extra, egg, order_menu_status
             FROM order_menus
             INNER JOIN menus
             ON order_menus.menu_id = menus.menu_id
@@ -592,6 +593,22 @@ app.put('/updateIngredientsUsed', (req, res) => {
     })
 })
 
+// update store state
+app.put('/updateStoreState', (req, res) => {
+    const { state } = req.body
+    db.query(`
+        UPDATE store_state
+        SET is_open = ?
+        WHERE id = 1;
+    `, [state], (err, result) => {
+        if (err) {
+            console.error('Error updating store state:', err);
+            return res.status(500).json({ success: false, message: 'Internal Server Error' });
+        }
+        res.status(200).json({ success: true, message: 'Store state updated successfully' });
+    })
+})
+
 // get today sales value
 app.get('/getTodaySales', (req, res) => {
     const query = `
@@ -663,6 +680,7 @@ app.get('/getBestSellingMenu', (req, res) => {
     })
 })
 
+// get ingredients used
 app.get('/getIngredientsUsed', (req, res) => {
     const date_used = new Date().toISOString().slice(0, 10);
     db.query(`
@@ -675,6 +693,20 @@ app.get('/getIngredientsUsed', (req, res) => {
         if(err) {
             console.error('Error fetching ingredients used:', err);
             res.status(500).send("Error fetching ingredients used");
+        } else {
+            var data = JSON.parse(JSON.stringify(result));
+            res.status(200).send(data)
+        }
+    })
+})
+
+app.get('/getStoreState', (req, res) => {
+    db.query(`
+        SELECT is_open FROM store_state WHERE id = 1
+    `, (err, result) => {
+        if(err) {
+            console.error('Error fetching store state:', err);
+            res.status(500).send("Error fetching store state");
         } else {
             var data = JSON.parse(JSON.stringify(result));
             res.status(200).send(data)
