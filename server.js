@@ -1,6 +1,9 @@
 require('dotenv').config();
 
 const express = require('express');
+const AWS = require('aws-sdk');
+const multer = require('multer');
+const multerS3 = require('multer-s3');
 const cors = require('cors');
 const http = require('http');
 const mysql = require("mysql");
@@ -27,6 +30,24 @@ wss.on('connection', (ws) => {
                 client.send(message.toString());
             }
         })
+    })
+})
+
+const s3 = new AWS.S3({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION,
+})
+
+const upload = multer({
+    storage: multerS3({
+        s3: s3,
+        bucket: process.env.AWS_BUCKET_NAME,
+        contentType: multerS3.AUTO_CONTENT_TYPE,
+        acl: "public-read",
+        key: (req, file, cb) => {
+            cb(null, Date.now().toString() + '-' + file.originalname);
+        }
     })
 })
 
@@ -775,6 +796,11 @@ app.post('/addPayment', (req, res) => {
             return res.status(200).json({ success: true, message: 'Payment added successfully and paid status updated' });
         })
     })
+})
+
+// AWS S3 upload
+app.post('/upload', upload.single('image'), (req, res) => {
+    res.status(200).json({ message: 'File uploaded successfully', fileUrl: req.file.location});
 })
 
 server.listen(3001, () => {
