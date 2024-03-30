@@ -776,7 +776,7 @@ app.get('/getPayments', (req, res) => {
 })
 
 app.post('/addPayment', (req, res) => {
-    const { order_id, payment_picture, payment_status, total_price} = req.body;
+    const { order_id, payment_picture, total_price} = req.body;
     
     db.query(`
         INSERT INTO payments (order_id, payment_picture, date_time, total_price)
