@@ -381,7 +381,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
     Promise.all([
         queryDatabase(`SELECT order_status FROM orders WHERE order_id = ?`, [order_id]),
         queryDatabase(`
-            SELECT order_menus.menu_id, menu_name, meat, spicy, extra, egg, order_menu_status
+            SELECT order_menus.menu_id, menu_name, meat, spicy, extra, egg, optional_text, container, order_menu_status
             FROM order_menus
             INNER JOIN menus
             ON order_menus.menu_id = menus.menu_id
@@ -398,6 +398,8 @@ app.get('/getOrderById/:order_id', (req, res) => {
             spicy: item.spicy,
             extra: item.extra,
             egg: item.egg,
+            optionalText: item.optional_text,
+            container: item.container,
             orderMenuStatus: item.order_menu_status
         }))
 
