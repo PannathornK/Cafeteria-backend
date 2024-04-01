@@ -350,7 +350,7 @@ app.post('/addOrder', (req, res) => {
 
 // get order by id
 app.get('/getOrderById/:order_id', (req, res) => {
-    const order_id = req.params.order_id
+    const order_id = parseInt(req.params.order_id)
     const data = {
         orderId: order_id,
         orderStatus: '',
@@ -381,7 +381,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
     Promise.all([
         queryDatabase(`SELECT order_status FROM orders WHERE order_id = ?`, [order_id]),
         queryDatabase(`
-            SELECT menu_id, menu_name, meat, spicy, extra, egg, order_menu_status
+            SELECT order_menus.menu_id, menu_name, meat, spicy, extra, egg, order_menu_status
             FROM order_menus
             INNER JOIN menus
             ON order_menus.menu_id = menus.menu_id
