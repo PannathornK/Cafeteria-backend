@@ -369,6 +369,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
         totalPrice: 0,
         orderMenu: [
             {
+                order_menu_id: '',
                 menu_id: '',
                 menu_name: '',
                 meat: '',
@@ -397,7 +398,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
     Promise.all([
         queryDatabase(`SELECT order_status, total_price FROM orders WHERE order_id = ?`, [order_id]),
         queryDatabase(`
-            SELECT order_menus.menu_id, menu_name, meat, spicy, extra, egg, optional_text, container, order_menu_status, order_menus.price
+            SELECT order_menu_id, order_menus.menu_id, menu_name, meat, spicy, extra, egg, optional_text, container, order_menu_status, order_menus.price
             FROM order_menus
             INNER JOIN menus
             ON order_menus.menu_id = menus.menu_id
@@ -410,6 +411,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
         }
 
         data.orderMenu = menuResult.map(item => ({
+            order_menu_id: item.order_menu_id,
             menu_id: item.menu_id,
             menu_name: item.menu_name,
             meat: item.meat,
@@ -787,20 +789,20 @@ app.get('/getPayments', (req, res) => {
 
 app.post('/addPayment', (req, res) => {
     const { order_id, payment_picture, total_price} = req.body;
-    
+
     db.query(`
-        INSERT INTO payments (order_id, payment_picture, date_time, total_price)
-        VALUES (?, ?, NOW(), ?)
-    `, [order_id, payment_picture, total_price], (err, result) => {
+        UPDATE orders SET paid = 1 WHERE order_id = ?
+    `, [order_id], (err, result) => {
         if (err) {
-            console.error('Error adding payment:', err);
+            console.error('Error updating paid status:', err);
             return res.status(500).json({ success: false, message: 'Internal Server Error' });
         }
         db.query(`
-            UPDATE orders SET paid = 1 WHERE order_id = ?
-        `, [order_id], (err, result) => {
+            INSERT INTO payments (order_id, payment_picture, date_time, total_price)
+            VALUES (?, ?, NOW(), ?)
+        `, [order_id, payment_picture, total_price], (err, result) => {
             if (err) {
-                console.error('Error updating paid status:', err);
+                console.error('Error adding payment:', err);
                 return res.status(500).json({ success: false, message: 'Internal Server Error' });
             }
             return res.status(200).json({ success: true, message: 'Payment added successfully and paid status updated' });
