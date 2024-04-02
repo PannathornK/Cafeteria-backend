@@ -74,21 +74,46 @@ app.post('/addMenu', (req, res) => {
 })
 
 // get all menu
-// app.get('/getMenu', (req, res) => {
-//     db.query("SELECT * FROM menus", (err, result) => {
-//         if (err) throw err;
-//         var data = JSON.parse(JSON.stringify(result));
-//         res.send(data)
-//     })
-//     // res.send("ok")
-// })
+app.get('/getMenu', (req, res) => {
+    db.query("SELECT * FROM menus", (err, result) => {
+        if (err) throw err;
+        var data = JSON.parse(JSON.stringify(result));
+        res.send(data)
+    })
+    // res.send("ok")
+})
 
-// get all menu with optionals
-app.get('/getMenuWithOptionals', (req, res) => {
+// get optional by menu id
+app.get('/getOptionalByMenuId/:menuId', (req, res) => {
+    const menu_id = parseInt(req.params.menuId);
     const data = {
-        menus: []
+        id: menu_id,
+        title: '',
+        price: 0,
+        image: '',
+        options: [
+            {
+                title: 'ประเภทเนื้อสัตว์',
+                required: 1,
+                options: []
+            },
+            {
+                title: 'ระดับความเผ็ด',
+                required: 1,
+                options: []
+            },
+            {
+                title: 'เพิ่มไข่',
+                required: 0,
+                options: []
+            },
+            {
+                title: 'ภาชนะ',
+                required: 1,
+                options: []
+            }
+        ]
     };
-
     const queryDatabase = (sql, params) => {
         return new Promise((resolve, reject) => {
             db.query(sql, params, (err, result) => {
@@ -101,73 +126,43 @@ app.get('/getMenuWithOptionals', (req, res) => {
         });
     };
 
-    queryDatabase('SELECT menu_id, menu_name, menu_picture, price, availability FROM menus')
-    .then(menuResults => {
-        data.menus = menuResults.map(menu => ({
-            id: menu.menu_id,
-            title: menu.menu_name,
-            image: menu.menu_picture,
-            price: Number(menu.price),
-            options: [],
-            availability: menu.availability
+    Promise.all([
+        queryDatabase('SELECT menu_name, menu_picture, price FROM menus WHERE menu_id = ?', menu_id),
+        queryDatabase(`SELECT optional_value, additional_price, availability FROM menu_optionals WHERE menu_id = ? AND optional_type ='meat'`, menu_id),
+        queryDatabase(`SELECT optional_value, additional_price, availability FROM menu_optionals WHERE menu_id = ? AND optional_type ='spicy'`, menu_id),
+        queryDatabase(`SELECT optional_value, additional_price, availability FROM menu_optionals WHERE menu_id = ? AND optional_type ='egg'`, menu_id),
+        queryDatabase(`SELECT optional_value, additional_price, availability FROM menu_optionals WHERE menu_id = ? AND optional_type ='container'`, menu_id)
+    ])
+    .then(([menuResult, meatResult, spicyResult, eggResult, containerResult]) => {
+        data.title = menuResult[0].menu_name;
+        data.image = menuResult[0].menu_picture;
+        data.price = Number(menuResult[0].price);
+
+        data.options.find(opt => opt.title === 'ประเภทเนื้อสัตว์').options = meatResult.map(opt => ({
+            name: opt.optional_value,
+            price: Number(opt.additional_price),
+            availability: opt.availability
         }));
-
-        // Fetch options for each menu based on optional_type
-        const optionsPromises = data.menus.map(menu => {
-            return Promise.all([
-                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'meat'`, menu.id),
-                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'spicy'`, menu.id),
-                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'egg'`, menu.id),
-                queryDatabase(`SELECT optional_value, additional_price FROM menu_optionals WHERE menu_id = ? AND optional_type = 'container'`, menu.id)
-            ]);
-        });
-
-        return Promise.all(optionsPromises);
-    })
-    .then(optionsResults => {
-        optionsResults.forEach((options, index) => {
-            const [meatOptions, spicyOptions, eggOptions, containerOptions] = options;
-            
-            data.menus[index].options.push({
-                title: 'ประเภทเนื้อสัตว์',
-                required: 1,
-                options: meatOptions.map(option => ({
-                    name: option.optional_value,
-                    price: Number(option.additional_price)
-                }))
-            });
-
-            data.menus[index].options.push({
-                title: 'ระดับความเผ็ด',
-                required: 1,
-                options: spicyOptions.map(option => ({
-                    name: option.optional_value,
-                    price: Number(option.additional_price)
-                }))
-            });
-
-            data.menus[index].options.push({
-                title: 'เพิ่มไข่',
-                required: 0,
-                options: eggOptions.map(option => ({
-                    name: option.optional_value,
-                    price: Number(option.additional_price)
-                }))
-            });
-
-            data.menus[index].options.push({
-                title: 'ภาชนะ',
-                required: 1,
-                options: containerOptions.map(option => ({
-                    name: option.optional_value,
-                    price: Number(option.additional_price)
-                }))
-            });
-        });
+        data.options.find(opt => opt.title === 'ระดับความเผ็ด').options = spicyResult.map(opt => ({
+            name: opt.optional_value,
+            price: Number(opt.additional_price),
+            availability: opt.availability
+        }));
+        data.options.find(opt => opt.title === 'เพิ่มไข่').options = eggResult.map(opt => ({
+            name: opt.optional_value,
+            price: Number(opt.additional_price),
+            availability: opt.availability
+        }));
+        data.options.find(opt => opt.title === 'ภาชนะ').options = containerResult.map(opt => ({
+            name: opt.optional_value,
+            price: Number(opt.additional_price),
+            availability: opt.availability
+        }));
 
         res.send(data);
     })
     .catch(err => {
+        // Handle errors here
         console.error(err);
         res.status(500).send('Internal Server Error');
     });
