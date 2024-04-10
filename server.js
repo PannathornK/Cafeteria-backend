@@ -21,6 +21,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     next();
 });
+
 wss.on('connection', (ws) => {
     console.log("client connected")
     ws.on('message', (message) => {
@@ -54,11 +55,12 @@ db.connect((err) => {
     if (err) throw err;
 })
 
+// default route
 app.get('/', (req, res) => {
     res.send("ok")
 })
 
-// add menu
+// add menu into menus table
 app.post('/addMenu', (req, res) => {
     const {menu_name, menu_picture, price, weekly_sell, topmenu_sell_week} = req.body
     const menu = [[menu_name, menu_picture, price, weekly_sell, topmenu_sell_week]]
@@ -73,7 +75,7 @@ app.post('/addMenu', (req, res) => {
     })
 })
 
-// get all menu
+// get all menu from menus table
 app.get('/getMenu', (req, res) => {
     db.query("SELECT * FROM menus", (err, result) => {
         if (err) throw err;
@@ -83,7 +85,7 @@ app.get('/getMenu', (req, res) => {
     // res.send("ok")
 })
 
-// get optional by menu id
+// get optional by menu id from menu_optionals table
 app.get('/getOptionalByMenuId/:menuId', (req, res) => {
     const menu_id = parseInt(req.params.menuId);
     const data = {
@@ -168,6 +170,7 @@ app.get('/getOptionalByMenuId/:menuId', (req, res) => {
     });
 });
 
+// get availability for all menus in menus table
 app.get('/getMenuAvailability', (req, res) => {
     db.query(`
         SELECT menu_id, menu_name, availability
@@ -179,6 +182,7 @@ app.get('/getMenuAvailability', (req, res) => {
     })
 })
 
+// update availability with menu id in menus table
 app.put('/updateMenuAvailability', (req, res) => {
     const { menu_id, availability } = req.body;
     db.query(`
@@ -194,6 +198,7 @@ app.put('/updateMenuAvailability', (req, res) => {
     })
 })
 
+// get availability for all options in option_availability table
 app.get('/getOptionAvailability', (req, res) => {
     db.query(`
         SELECT option_id, option_value, availability
@@ -205,6 +210,7 @@ app.get('/getOptionAvailability', (req, res) => {
     })
 })
 
+// update availability with option id in option_availability table
 app.put('/updateOptionAvailability', (req, res) => {
     const { option_id, availability } = req.body;
     db.query(`
@@ -220,7 +226,7 @@ app.put('/updateOptionAvailability', (req, res) => {
     })
 })
 
-// get queue
+// get all queue from queues table
 app.get('/getQueue', (req, res) => {
     db.query(
         `SELECT queue_id, queues.menu_id, CONCAT(menu_name, " ", meat) AS menu, spicy, extra, egg, optional_text, container, quantity, queue_status FROM queues
@@ -231,7 +237,7 @@ app.get('/getQueue', (req, res) => {
     })
 })
 
-// add queue
+// add new queue into queues table
 app.post('/addQueue', (req, res) => {
     const approvedOrdersId = req.body.approvedOrders;
     const approvedOrders = [];
@@ -307,7 +313,7 @@ app.post('/addQueue', (req, res) => {
     )
 })
 
-// get order
+// get all order from orders table
 app.get('/getOrder', (req, res) => {
     db.query(
         `SELECT orders.order_id, order_menu_id, order_status, order_menu_status, total_menu, order_menu_id, CONCAT(menu_name, " ", meat) AS menu, spicy ,extra, egg, optional_text, container, queue_id
@@ -323,7 +329,7 @@ app.get('/getOrder', (req, res) => {
     )
 })
 
-// add order
+// add new order into orders and order_menus table
 app.post('/addOrder', async (req, res) => {
     try {
         const {menu} = req.body
@@ -339,7 +345,7 @@ app.post('/addOrder', async (req, res) => {
             )
         })
 
-        const order_id = orderInsertResult.insertId;
+        const order_id = orderInsertResult;
         for (let i = 0; i < menu.length; i++) {
             await new Promise((resolve, reject) => {
                 db.query(
@@ -360,7 +366,7 @@ app.post('/addOrder', async (req, res) => {
     }
 })
 
-// get order by id
+// get order by id from orders and order_menus table
 app.get('/getOrderById/:order_id', (req, res) => {
     const order_id = parseInt(req.params.order_id)
     const data = {
@@ -432,7 +438,7 @@ app.get('/getOrderById/:order_id', (req, res) => {
     })
 })
 
-// change status in orders
+// change status in order_menus table
 app.post('/changeStatus', async (req, res) => {
     const orderId = req.body.orderId;
     const approvedOrders = req.body.approvedOrders || [];
@@ -481,7 +487,7 @@ app.post('/changeStatus', async (req, res) => {
     }
 })
 
-// change status in queues and order_menus
+// change status in queues and order_menus table
 app.post('/changeQueueStatus', async (req, res) => {
     const { queue_id, status } = req.body;
 
@@ -526,7 +532,7 @@ app.post('/changeQueueStatus', async (req, res) => {
     }
 });
 
-// update today sales by incoming sale value
+// update today sales by incoming sale value in today_sales_data table
 app.put('/updateTodaySales', (req, res) => {
     const { sales } = req.body;
 
@@ -546,7 +552,7 @@ app.put('/updateTodaySales', (req, res) => {
     })
 })
 
-// update monthly sales by incoming sale value
+// update monthly sales by incoming sale value in monthly_sales_data table
 app.put('/updateMonthlySales', (req, res) => {
     const { sales } = req.body;
 
@@ -573,7 +579,7 @@ app.put('/updateMonthlySales', (req, res) => {
     })
 });
 
-// update best selling menu
+// update best selling menu item by incoming data in best_selling_menu_daily table
 app.put('/updateBestSellingMenu', (req, res) => {
     const { menu_id } = req.body
     const sale_date = new Date().toISOString().slice(0, 10);
@@ -611,7 +617,7 @@ app.put('/updateBestSellingMenu', (req, res) => {
     })
 })
 
-// update ingredients used
+// update ingredients used by incoming data in ingredients_used_daily table
 app.put('/updateIngredientsUsed', (req, res) => {
     const { optional_value } = req.body
     const date_used = new Date().toISOString().slice(0, 10);
@@ -668,7 +674,7 @@ app.put('/updateStoreState', (req, res) => {
     })
 })
 
-// get today sales value
+// get today sales value from today_sales_data table
 app.get('/getTodaySales', (req, res) => {
     const query = `
         SELECT today_sales
@@ -692,7 +698,7 @@ app.get('/getTodaySales', (req, res) => {
     })
 })
 
-// get monthly sales value
+// get monthly sales value from monthly_sales_data table
 app.get('/getMonthlySales', (req, res) => {
     const query = `
         SELECT month, sales
@@ -717,7 +723,7 @@ app.get('/getMonthlySales', (req, res) => {
     })
 })
 
-// get best selling menu
+// get best selling menu value from best_selling_menu_daily table
 app.get('/getBestSellingMenu', (req, res) => {
     const sale_date = new Date().toISOString().slice(0, 10);
     db.query(`
@@ -739,7 +745,7 @@ app.get('/getBestSellingMenu', (req, res) => {
     })
 })
 
-// get ingredients used
+// get ingredients used from ingredients_used_daily table
 app.get('/getIngredientsUsed', (req, res) => {
     const date_used = new Date().toISOString().slice(0, 10);
     db.query(`
@@ -759,6 +765,7 @@ app.get('/getIngredientsUsed', (req, res) => {
     })
 })
 
+// get store state
 app.get('/getStoreState', (req, res) => {
     db.query(`
         SELECT is_open FROM store_state WHERE id = 1
@@ -773,6 +780,7 @@ app.get('/getStoreState', (req, res) => {
     })
 })
 
+// get all payments from payments table
 app.get('/getPayments', (req, res) => {
     db.query(`
         SELECT * FROM payments
@@ -787,6 +795,7 @@ app.get('/getPayments', (req, res) => {
     })
 })
 
+// add payment to payments table
 app.post('/addPayment', (req, res) => {
     const { order_id, payment_picture, total_price} = req.body;
 
@@ -810,7 +819,7 @@ app.post('/addPayment', (req, res) => {
     })
 })
 
-// AWS S3 upload
+// upload picture to AWS S3
 app.post('/upload', upload.single("image"), async (req, res) => {
     try {
         if (!req.file) {
