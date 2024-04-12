@@ -32,6 +32,23 @@ CREATE TABLE `orders` (
   PRIMARY KEY (`order_id`)
 );
 
+CREATE TABLE `queues` (
+  `queue_id` int NOT NULL AUTO_INCREMENT,
+  `menu_id` int DEFAULT NULL,
+  `meat` varchar(45) DEFAULT NULL,
+  `spicy` varchar(45) DEFAULT NULL,
+  `extra` tinyint DEFAULT NULL,
+  `egg` varchar(45) DEFAULT NULL,
+  `optional_text` varchar(255) DEFAULT NULL,
+  `container` varchar(45) DEFAULT NULL,
+  `quantity` int DEFAULT NULL,
+  `create_date` datetime DEFAULT NULL,
+  `queue_status` enum('approved','cooking','finished') DEFAULT NULL,
+  PRIMARY KEY (`queue_id`),
+  KEY `fk_queues_menu_id` (`menu_id`),
+  CONSTRAINT `fk_queues_menu_id` FOREIGN KEY (`menu_id`) REFERENCES `menus` (`menu_id`)
+);
+
 CREATE TABLE `order_menus` (
   `order_menu_id` int NOT NULL AUTO_INCREMENT,
   `order_id` int DEFAULT NULL,
@@ -52,23 +69,6 @@ CREATE TABLE `order_menus` (
   CONSTRAINT `fk_order_menus_menu_id` FOREIGN KEY (`menu_id`) REFERENCES `menus` (`menu_id`),
   CONSTRAINT `fk_order_menus_order_id` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`),
   CONSTRAINT `fk_order_menus_queue_id` FOREIGN KEY (`queue_id`) REFERENCES `queues` (`queue_id`)
-);
-
-CREATE TABLE `queues` (
-  `queue_id` int NOT NULL AUTO_INCREMENT,
-  `menu_id` int DEFAULT NULL,
-  `meat` varchar(45) DEFAULT NULL,
-  `spicy` varchar(45) DEFAULT NULL,
-  `extra` tinyint DEFAULT NULL,
-  `egg` varchar(45) DEFAULT NULL,
-  `optional_text` varchar(255) DEFAULT NULL,
-  `container` varchar(45) DEFAULT NULL,
-  `quantity` int DEFAULT NULL,
-  `create_date` datetime DEFAULT NULL,
-  `queue_status` enum('approved','cooking','finished') DEFAULT NULL,
-  PRIMARY KEY (`queue_id`),
-  KEY `fk_queues_menu_id` (`menu_id`),
-  CONSTRAINT `fk_queues_menu_id` FOREIGN KEY (`menu_id`) REFERENCES `menus` (`menu_id`)
 );
 
 CREATE TABLE `payments` (
